@@ -12,10 +12,14 @@ class AggFirstPrimitive : public AggregatorPrimitive<DataType, DataType, IndexTy
     using data_type = DataType;
     using data_type2 = DataType2;
 
-    AggFirstPrimitive(Grid<IndexType> *grid, int grids, int threads) : Base(grid, grids, threads), data_ptr2(threads), data_size2(threads), data_mask_ptr2(threads), data_mask_size2(threads) {
+    AggFirstPrimitive(Grid<IndexType> *grid, int grids, int threads, bool invert)
+        : Base(grid, grids, threads), data_ptr2(threads), data_size2(threads), data_mask_ptr2(threads), data_mask_size2(threads), invert(invert) {
         grid_data_order = new data_type2[this->count()];
         typedef std::numeric_limits<data_type2> limit_type;
-        std::fill(grid_data_order, grid_data_order + this->count(), limit_type::max());
+        if (invert)
+            std::fill(grid_data_order, grid_data_order + this->count(), limit_type::min());
+        else
+            std::fill(grid_data_order, grid_data_order + this->count(), limit_type::max());
     }
     virtual ~AggFirstPrimitive() { delete[] grid_data_order; }
     void set_data(int thread, py::buffer ar, size_t index) {
@@ -24,7 +28,7 @@ class AggFirstPrimitive : public AggregatorPrimitive<DataType, DataType, IndexTy
             throw std::runtime_error("Expected a 1d array");
         }
         if (index == 1) {
-            this->data_ptr2[thread] = (DataType *)info.ptr;
+            this->data_ptr2[thread] = (DataType2 *)info.ptr;
             this->data_size2[thread] = info.shape[0];
         } else {
             this->data_ptr[thread] = (DataType *)info.ptr;
@@ -40,25 +44,41 @@ class AggFirstPrimitive : public AggregatorPrimitive<DataType, DataType, IndexTy
         this->data_mask_size2[thread] = info.shape[0];
     }
     virtual void merge(std::vector<Aggregator *> others) {
+        const bool invert = this->invert;
         for (auto i : others) {
             auto other = static_cast<AggFirstPrimitive *>(i);
             for (size_t i = 0; i < this->grid->length1d; i++) {
-                if (other->grid_data_order[i] < this->grid_data_order[i]) {
-                    this->grid_data[i] = other->grid_data[i];
-                    this->grid_data_order[i] = other->grid_data_order[i];
+                if (invert) {
+                    if (other->grid_data_order[i] > this->grid_data_order[i]) {
+                        this->grid_data[i] = other->grid_data[i];
+                        this->grid_data_order[i] = other->grid_data_order[i];
+                    }
+                } else {
+                    if (other->grid_data_order[i] < this->grid_data_order[i]) {
+                        this->grid_data[i] = other->grid_data[i];
+                        this->grid_data_order[i] = other->grid_data_order[i];
+                    }
                 }
             }
         }
     }
     virtual pybind11::object get_result() {
+        const bool invert = this->invert;
         {
             py::gil_scoped_release release;
             for (size_t j = 0; j < this->grid->length1d; j++) {
                 for (int64_t i = 1; i < this->grids; ++i) {
                     int64_t j2 = j + i * this->grid->length1d;
-                    if (grid_data_order[j2] < grid_data_order[j]) {
-                        this->grid_data[j] = this->grid_data[j2];
-                        grid_data_order[j] = grid_data_order[j2];
+                    if (invert) {
+                        if (grid_data_order[j2] > grid_data_order[j]) {
+                            this->grid_data[j] = this->grid_data[j2];
+                            grid_data_order[j] = grid_data_order[j2];
+                        }
+                    } else {
+                        if (grid_data_order[j2] < grid_data_order[j]) {
+                            this->grid_data[j] = this->grid_data[j2];
+                            grid_data_order[j] = grid_data_order[j2];
+                        }
                     }
                 }
             }
@@ -78,51 +98,62 @@ class AggFirstPrimitive : public AggregatorPrimitive<DataType, DataType, IndexTy
         if (data_ptr == nullptr) {
             throw std::runtime_error("data not set");
         }
-        if (data_ptr2 == nullptr) {
-            throw std::runtime_error("data2 not set");
-        }
+        // if (data_ptr2 == nullptr) {
+        //     throw std::runtime_error("data2 not set");
+        // }
+        const bool invert = this->invert;
         // TODO: masked support
         for (size_t j = 0; j < length; j++) {
             DataType value = data_ptr[offset + j];
-            DataType value_order = data_ptr2[offset + j];
+            DataType2 value_order = data_ptr2 == nullptr ? offset + j : data_ptr2[offset + j];
             if (FlipEndian) {
                 value = _to_native(value);
                 value_order = _to_native(value_order);
             }
             if (value == value && value_order == value_order) { // nan check
                 IndexType i = indices1d[j];
-                if (value_order < grid_data_order[i]) {
-                    grid_data[i] = value;
-                    grid_data_order[i] = value_order;
+                if (invert) {
+                    if (value_order > grid_data_order[i]) {
+                        grid_data[i] = value;
+                        grid_data_order[i] = value_order;
+                    }
+                } else {
+                    if (value_order < grid_data_order[i]) {
+                        grid_data[i] = value;
+                        grid_data_order[i] = value_order;
+                    }
                 }
             }
         }
     }
     data_type2 *grid_data_order;
 
-    std::vector<data_type *> data_ptr2;
+    std::vector<data_type2 *> data_ptr2;
     std::vector<uint64_t> data_size2;
     std::vector<uint8_t *> data_mask_ptr2;
     std::vector<uint64_t> data_mask_size2;
-}; // namespace vaex
+    bool invert; // intead of creating 2x as many templates
+};               // namespace vaex
 
-template <class T, bool FlipEndian>
-void add_agg_first_primitive(py::module &m, const py::class_<Aggregator> &base) {
+template <class T, class T2, bool FlipEndian>
+void add_agg_first_primitive_mixed(py::module &m, const py::class_<Aggregator> &base) {
     std::string class_name = std::string("AggFirst_");
     class_name += type_name<T>::value;
+    class_name += "_";
+    class_name += type_name<T2>::value;
     class_name += FlipEndian ? "_non_native" : "";
-    using Class = AggFirstPrimitive<T, T, default_index_type, FlipEndian>;
-    py::class_<Class>(m, class_name.c_str(), base).def(py::init<Grid<> *, int, int>(), py::keep_alive<1, 2>()).def_buffer(&Class::buffer_info).def("set_data_mask2", &Class::set_data_mask2);
+    using Class = AggFirstPrimitive<T, T2, default_index_type, FlipEndian>;
+    py::class_<Class>(m, class_name.c_str(), base).def(py::init<Grid<> *, int, int, bool>(), py::keep_alive<1, 2>()).def_buffer(&Class::buffer_info).def("set_data_mask2", &Class::set_data_mask2);
     // .def("clear_data_mask2", &Class::clear_data_mask2);
 }
 
-// TODO: implement string
-// void add_agg_first_string(py::module &m, const py::class_<Aggregator> &base) {
-//     std::string class_name = std::string("AggCount_string");
-//     using Class = AggCountString<>;
-//     add_agg_binding_1arg<Class>(m, base, class_name.c_str());
-// }
+template <class T, bool FlipEndian>
+void add_agg_first_primitive(py::module &m, const py::class_<Aggregator> &base) {
+#define create(type) add_agg_first_primitive_mixed<T, type, FlipEndian>(m, base);
+#include "create_alltypes.hpp"
+}
 
+#undef create
 #define create(type)                                                                                                                                                                                   \
     template void add_agg_first_primitive<type, true>(py::module & m, const py::class_<Aggregator> &base);                                                                                             \
     template void add_agg_first_primitive<type, false>(py::module & m, const py::class_<Aggregator> &base);

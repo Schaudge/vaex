@@ -47,6 +47,8 @@ class aggregation_encoding:
                 agg_spec['moment'] = agg_spec.pop('parameters')[0]
         if type == 'first':
             args = agg_spec.pop('expression')
+            if not isinstance(args, list):
+                args = [args]
         return f(*args, **agg_spec)
 
 
@@ -243,7 +245,7 @@ class AggregatorDescriptorBasic(AggregatorDescriptor):
             spec['selection'] = str(self.selection) if isinstance(self.selection, Expression) else self.selection
         if self.edges:
             spec['edges'] = True
-        if self.agg_args:
+        if self.agg_args and self.short_name not in ['first', 'last']:
             spec['parameters'] = self.agg_args
         return spec
 
@@ -252,7 +254,8 @@ class AggregatorDescriptorBasic(AggregatorDescriptor):
             self.dtype_in = DataType(np.dtype('int64'))
             self.dtype_out = DataType(np.dtype('int64'))
         else:
-            self.dtype_in = df[str(self.expressions[0])].data_type().index_type
+            self.dtypes_in = [df[str(e)].data_type().index_type for e in self.expressions]
+            self.dtype_in = self.dtypes_in[0]
             self.dtype_out = self.dtype_in
             if self.short_name == "count":
                 self.dtype_out = DataType(np.dtype('int64'))
@@ -271,7 +274,14 @@ class AggregatorDescriptorBasic(AggregatorDescriptor):
         return [task], finish(task)
 
     def _create_operation(self, grid, nthreads):
-        agg_op_type = vaex.utils.find_type_from_dtype(vaex.superagg, self.name + "_", self.dtype_in)
+        if self.name == "AggFirst":
+            if len(self.dtypes_in) == 1:
+                # rows use int64
+                agg_op_type = vaex.utils.find_type_from_dtype(vaex.superagg, self.name + "_", self.dtypes_in[0], vaex.dtype(np.dtype('int64')))
+            else:
+                agg_op_type = vaex.utils.find_type_from_dtype(vaex.superagg, self.name + "_", self.dtypes_in[0], self.dtypes_in[1])
+        else:
+            agg_op_type = vaex.utils.find_type_from_dtype(vaex.superagg, self.name + "_", self.dtype_in)
         bytes_per_cell = self.dtype_out.numpy.itemsize
         cells = reduce(operator.mul, [len(binner) for binner in grid.binners], 1)
         grids = nthreads
@@ -452,9 +462,14 @@ def max(expression, selection=None, edges=False):
     return AggregatorDescriptorBasic('AggMax', expression, 'max', selection=selection, edges=edges)
 
 @register
-def first(expression, order_expression, selection=None, edges=False):
+def first(expression, order_expression=None, selection=None, edges=False):
     '''Creates a first aggregation'''
-    return AggregatorDescriptorBasic('AggFirst', [expression, order_expression], 'first', multi_args=True, selection=selection, edges=edges)
+    return AggregatorDescriptorBasic('AggFirst', [expression, order_expression] if order_expression is not None else expression, 'first', multi_args=True, selection=selection, edges=edges, agg_args=[False])
+
+@register
+def last(expression, order_expression=None, selection=None, edges=False):
+    '''Creates a first aggregation'''
+    return AggregatorDescriptorBasic('AggFirst', [expression, order_expression] if order_expression is not None else expression, 'last', multi_args=True, selection=selection, edges=edges, agg_args=[True])
 
 @register
 def std(expression, ddof=0, selection=None, edges=False):

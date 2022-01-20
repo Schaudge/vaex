@@ -959,7 +959,7 @@ class DataFrame(object):
         return finish(task)
 
     @docsubst
-    def first(self, expression, order_expression, binby=[], limits=None, shape=default_shape, selection=False, delay=False, edges=False, progress=None, array_type=None):
+    def first(self, expression, order_expression=None, binby=[], limits=None, shape=default_shape, selection=False, delay=False, edges=False, progress=None, array_type=None):
         """Return the first element of a binned `expression`, where the values each bin are sorted by `order_expression`.
 
         Example:
@@ -1001,6 +1001,25 @@ class DataFrame(object):
         stats = [self._first_calculation(expression, order_expression, binby=binby, limits=limits, shape=shape, selection=selection, edges=edges, progressbar=progressbar) for expression in expressions]
         var = finish(*stats)
         return self._delay(delay, var)
+
+    @docsubst
+    def last(self, expression, order_expression=None, binby=[], limits=None, shape=default_shape, selection=False, delay=False, edges=False, progress=None, array_type=None):
+        """Return the last element of a binned `expression`, where the values each bin are sorted by `order_expression`.
+
+        :param expression: The value to be placed in the bin.
+        :param order_expression: Order the values in the bins by this expression.
+        :param binby: {binby}
+        :param limits: {limits}
+        :param shape: {shape}
+        :param selection: {selection}
+        :param delay: {delay}
+        :param progress: {progress}
+        :param edges: {edges}
+        :param array_type: {array_type}
+        :return: Ndarray containing the first elements.
+        :rtype: numpy.array
+        """
+        return self._compute_agg('last', expression, binby, limits, shape, selection, delay, edges, progress, extra_expressions=[order_expression], array_type=array_type)
 
     @docsubst
     @stat_1d
