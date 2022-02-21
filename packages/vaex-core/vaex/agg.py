@@ -463,12 +463,25 @@ def max(expression, selection=None, edges=False):
 
 @register
 def first(expression, order_expression=None, selection=None, edges=False):
-    '''Creates a first aggregation'''
+    '''Creates a first aggregation.
+
+    :param expression: {expression_one}.
+    :param order_expression:  Order the values in the bins by this expression.
+    :param selection: {selection1}
+    :param edges: {edges}
+    '''
     return AggregatorDescriptorBasic('AggFirst', [expression, order_expression] if order_expression is not None else expression, 'first', multi_args=True, selection=selection, edges=edges, agg_args=[False])
 
 @register
+@docsubst
 def last(expression, order_expression=None, selection=None, edges=False):
-    '''Creates a first aggregation'''
+    '''Creates a first aggregation.
+
+    :param expression: {expression_one}.
+    :param order_expression:  Order the values in the bins by this expression.
+    :param selection: {selection1}
+    :param edges: {edges}
+    '''
     return AggregatorDescriptorBasic('AggFirst', [expression, order_expression] if order_expression is not None else expression, 'last', multi_args=True, selection=selection, edges=edges, agg_args=[True])
 
 @register
@@ -482,6 +495,7 @@ def var(expression, ddof=0, selection=None, edges=False):
     return AggregatorDescriptorVar('var', expression, 'var', ddof=ddof, selection=selection, edges=edges)
 
 @register
+@docsubst
 def nunique(expression, dropna=False, dropnan=False, dropmissing=False, selection=None, edges=False):
     """Aggregator that calculates the number of unique items per bin.
 

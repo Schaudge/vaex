@@ -972,7 +972,7 @@ class DataFrame(object):
         array([-4.81883764, 11.65378   ,  9.70084476, -7.3025589 ,  4.84954977,
                 8.47446537, -5.73602629, 10.18783   ])
 
-        :param expression: The value to be placed in the bin.
+        :param expression: {expression}
         :param order_expression: Order the values in the bins by this expression.
         :param binby: {binby}
         :param limits: {limits}
