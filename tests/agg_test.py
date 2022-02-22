@@ -570,3 +570,36 @@ def test_all():
 
     assert df.groupby('g', agg={'all': vaex.agg.all(selection=df.b1)})['all'].tolist() == [False, False]
     assert df.groupby('g', agg={'all': vaex.agg.all(selection=df.b2)})['all'].tolist() == [False, True]
+
+
+def test_skew(df_example):
+    df = df_example
+    pandas_df = df.to_pandas_df()
+    np.testing.assert_approx_equal(df.skew('x'),  pandas_df.x.skew(), significant=5)
+    np.testing.assert_approx_equal(df.skew('Lz'),  pandas_df.Lz.skew(), significant=5)
+    np.testing.assert_approx_equal(df.skew('E'),  pandas_df.E.skew(), significant=5)
+
+
+def test_groupby_skew(df_example):
+    df = df_example
+    pandas_df = df.to_pandas_df()
+    vaex_g = df.groupby('id', sort=True).agg({'skew': vaex.agg.skew('Lz')})
+    pandas_g = pandas_df.groupby('id', sort=True).agg(skew=('Lz', 'skew'))
+    np.testing.assert_almost_equal(vaex_g['skew'].values, pandas_g['skew'].values, decimal=4)
+
+
+def test_kurtosis(df_example):
+    df = df_example
+    pandas_df = df.to_pandas_df()
+    np.testing.assert_approx_equal(df.kurtosis('x'),  pandas_df.x.kurtosis(), significant=4)
+    np.testing.assert_approx_equal(df.kurtosis('Lz'),  pandas_df.Lz.kurtosis(), significant=4)
+    np.testing.assert_approx_equal(df.kurtosis('E'),  pandas_df.E.kurtosis(), significant=4)
+
+
+def test_groupby_kurtosis(df_example):
+    import pandas as pd
+    df = df_example
+    pandas_df = df.to_pandas_df()
+    vaex_g = df.groupby('id', sort=True).agg({'kurtosis': vaex.agg.kurtosis('Lz')})
+    pandas_g = pandas_df.groupby('id', sort=True).agg(kurtosis=('Lz', pd.Series.kurtosis))
+    np.testing.assert_almost_equal(vaex_g['kurtosis'].values, pandas_g['kurtosis'].values, decimal=3)
